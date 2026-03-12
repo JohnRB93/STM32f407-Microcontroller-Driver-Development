@@ -4,7 +4,8 @@
 //#define _ANALOG_MEASUREMENT_LCD
 //#define _ANALOG_MEASUREMENT_LCD_UART
 //#define _USER_PUSHBUTTON_INTERRUPT_LEDS
-#define _SPI_DATA_TX_ONLY
+//#define _SPI_DATA_TX_ONLY
+#define _SPI_DATA_TX_RX
 
 
 #ifdef _ANALOG_INTERRUPTS_SINGLE_CONV_UART_CONSOL
@@ -692,7 +693,7 @@ extern void GPIO_ApplicationEventCallBack(void)
 #define MISO			GPIO_PIN_NO_14
 #define MOSI			GPIO_PIN_NO_15
 
-#define RED_BTN			GPIO_PIN_NO_0
+#define RED_BTN			GPIO_PIN_NO_4
 #define YELLOW_BTN		GPIO_PIN_NO_1
 #define GREEN_BTN		GPIO_PIN_NO_2
 #define BLUE_BTN		GPIO_PIN_NO_3
@@ -702,7 +703,6 @@ extern void GPIO_ApplicationEventCallBack(void)
 #define GREEN_BTN_PRESSED		20
 #define BLUE_BTN_PRESSED		25
 
-uint8_t* rxData;
 uint8_t btnPressed;
 /**************************************************************************************************************/
 
@@ -714,17 +714,17 @@ void setUpButtons(void);
 /************ Main Function ***********************************************************************************/
 int main(void)
 {
-	uint8_t dataTx[1];
 	setUpButtons();
 	setUpSpi();
 	btnPressed = 0;
+	uint8_t dataTx[1];
 	while(1)
 	{
 		if(btnPressed == RED_BTN_PRESSED)
 		{
 			dataTx[0] = 'r';
 			GPIO_WriteToOutputPin(GPIOB, NSS, RESET);
-			SPI_TransmitDataMaster(SPI2, dataTx, rxData);
+			SPI_MasterTransmissionStartTx(SPI2, dataTx);
 			GPIO_WriteToOutputPin(GPIOB, NSS, SET);
 			btnPressed = 0;
 		}
@@ -732,7 +732,7 @@ int main(void)
 		{
 			dataTx[0] = 'y';
 			GPIO_WriteToOutputPin(GPIOB, NSS, RESET);
-			SPI_TransmitDataMaster(SPI2, dataTx, rxData);
+			SPI_MasterTransmissionStartTx(SPI2, dataTx);
 			GPIO_WriteToOutputPin(GPIOB, NSS, SET);
 			btnPressed = 0;
 		}
@@ -740,7 +740,7 @@ int main(void)
 		{
 			dataTx[0] = 'g';
 			GPIO_WriteToOutputPin(GPIOB, NSS, RESET);
-			SPI_TransmitDataMaster(SPI2, dataTx, rxData);
+			SPI_MasterTransmissionStartTx(SPI2, dataTx);
 			GPIO_WriteToOutputPin(GPIOB, NSS, SET);
 			btnPressed = 0;
 		}
@@ -748,7 +748,7 @@ int main(void)
 		{
 			dataTx[0] = 'b';
 			GPIO_WriteToOutputPin(GPIOB, NSS, RESET);
-			SPI_TransmitDataMaster(SPI2, dataTx, rxData);
+			SPI_MasterTransmissionStartTx(SPI2, dataTx);
 			GPIO_WriteToOutputPin(GPIOB, NSS, SET);
 			btnPressed = 0;
 		}
@@ -807,15 +807,11 @@ void setUpButtons(void)
 	btnConfig.GPIO_PinNumber = BLUE_BTN;
 	GPIO_Init(GPIOC, btnConfig);	// Blue Push Button
 
-	GPIOC->PUPDR |= (0xAA << 0);
+	GPIOC->PUPDR |= (0x2A8 << 0);
 }
 /**************************************************************************************************************/
 
 /************ IRQ Handling and Application Event Callbacks ****************************************************/
-void EXTI0_IRQHandler(void)
-{
-	EXTI0_IRQHandling();
-}
 
 void EXTI1_IRQHandler(void)
 {
@@ -832,6 +828,11 @@ void EXTI3_IRQHandler(void)
 	EXTI3_IRQHandling();
 }
 
+void EXTI4_IRQHandler(void)
+{
+	EXTI4_IRQHandling();
+}
+
 extern void GPIO_ApplicationEventCallBack(uint8_t pinNumber)
 {
 	if(pinNumber == RED_BTN)
@@ -846,3 +847,219 @@ extern void GPIO_ApplicationEventCallBack(uint8_t pinNumber)
 /**************************************************************************************************************/
 
 #endif /* _SPI_DATA_TX_ONLY */
+
+#ifdef _SPI_DATA_TX_RX
+
+/*
+ * This program demonstrates SPI communication with an arduino board; STM32 board as master and the
+ * arduino as slave. The STM32 board is connected to four push buttons and the arduino through a
+ * voltage level converter module. The arduino is connected to four LEDs that correspond to the STM's
+ * push buttons. When a push button is pressed, the STM32 sends data to the arduino via SPI peripheral
+ * to turn on the corresponding LED. The press of the button causes an Interrupt Service Routine to send
+ * the data. The baud rate for the SPI communication is 250kHz, any faster and the Arduino cannot keep up.
+ */
+
+/*
+ * SPI2 Pin Configurations:
+ * 	PB12 -> NSS
+ * 	PB13 -> SCK
+ * 	PB14 -> MISO
+ * 	PB15 -> MOSI
+ *
+ * Push Button Pins:
+ *  PC00 -> Red Push Button
+ *  PC01 -> Yellow Push Button
+ *  PC02 -> Green Push Button
+ *  PC03 -> Blue Push Button
+ */
+
+#include<stdint.h>
+#include<string.h>
+#include"spi.h"
+#include"gpio.h"
+
+/************ Global Variables and Macros *********************************************************************/
+#define NSS				GPIO_PIN_NO_12
+#define CLK				GPIO_PIN_NO_13
+#define MISO			GPIO_PIN_NO_14
+#define MOSI			GPIO_PIN_NO_15
+
+#define RED_BTN			GPIO_PIN_NO_4
+#define YELLOW_BTN		GPIO_PIN_NO_1
+#define GREEN_BTN		GPIO_PIN_NO_2
+#define BLUE_BTN		GPIO_PIN_NO_3
+
+#define RED_BTN_PRESSED			10
+#define YELLOW_BTN_PRESSED		15
+#define GREEN_BTN_PRESSED		20
+#define BLUE_BTN_PRESSED		25
+
+uint8_t* dataRx;
+uint8_t btnPressed;
+/**************************************************************************************************************/
+
+/************ Function Headers ********************************************************************************/
+void setUpSpi(void);
+void setUpButtons(void);
+void strToUint8P(uint8_t* pUint8, char* pChr);
+/**************************************************************************************************************/
+
+/************ Main Function ***********************************************************************************/
+int main(void)
+{
+	setUpButtons();
+	setUpSpi();
+	btnPressed = 0;
+	while(1)
+	{
+		switch(btnPressed)
+		{
+			case RED_BTN_PRESSED:
+			{
+				uint8_t dataTx[3];
+				strToUint8P(dataTx, "red");
+				GPIO_WriteToOutputPin(GPIOB, NSS, RESET);
+				SPI_MasterTransmissionStartTxRx(SPI2, dataTx, dataRx);
+				GPIO_WriteToOutputPin(GPIOB, NSS, SET);
+				btnPressed = 0;
+				break;
+			}
+			case YELLOW_BTN_PRESSED:
+			{
+				uint8_t dataTx[6];
+				strToUint8P(dataTx, "yellow");
+				GPIO_WriteToOutputPin(GPIOB, NSS, RESET);
+				SPI_MasterTransmissionStartTxRx(SPI2, dataTx, dataRx);
+				GPIO_WriteToOutputPin(GPIOB, NSS, SET);
+				btnPressed = 0;
+				break;
+			}
+			case GREEN_BTN_PRESSED:
+			{
+				uint8_t dataTx[5];
+				strToUint8P(dataTx, "green");
+				GPIO_WriteToOutputPin(GPIOB, NSS, RESET);
+				SPI_MasterTransmissionStartTxRx(SPI2, dataTx, dataRx);
+				GPIO_WriteToOutputPin(GPIOB, NSS, SET);
+				btnPressed = 0;
+				break;
+			}
+			case BLUE_BTN_PRESSED:
+			{
+				uint8_t dataTx[4];
+				strToUint8P(dataTx, "blue");
+				GPIO_WriteToOutputPin(GPIOB, NSS, RESET);
+				SPI_MasterTransmissionStartTxRx(SPI2, dataTx, dataRx);
+				GPIO_WriteToOutputPin(GPIOB, NSS, SET);
+				btnPressed = 0;
+				break;
+			}
+		}
+	}
+}
+/**************************************************************************************************************/
+
+/************ Function Definitions ****************************************************************************/
+void setUpSpi(void)
+{
+	SPI_Config_t spiConfig;
+	GPIO_PinConfig_t pins;
+
+	//Configure GPIO pins for SPI2
+	pins.GPIO_PinNumber = NSS;
+	pins.GPIO_PinMode = GPIO_MODE_OUT;
+	GPIO_Init(GPIOB, pins); //NSS
+	GPIO_WriteToOutputPin(GPIOB, NSS, SET);
+
+	pins.GPIO_PinMode = GPIO_MODE_ALTFN;
+	pins.GPIO_PinAltFunMode = GPIO_AF_05;
+	pins.GPIO_PinNumber = CLK;
+	GPIO_Init(GPIOB, pins); //CLK
+
+	pins.GPIO_PinNumber = MISO;
+	GPIO_Init(GPIOB, pins); //MISO
+
+	pins.GPIO_PinNumber = MOSI;
+	pins.GPIO_PinOPType = GPIO_OP_TYPE_PP;
+	GPIO_Init(GPIOB, pins); //MOSI
+
+	//Configure SPI Peripheral
+	spiConfig.SPI_bidirectionalMode = SPI_2LINE_UNIDIRECTIONAL_RX_TX_MODE;
+	spiConfig.SPI_baudRateDiv = SPI_BAUD_DIV_64; //Baud Rate = 16MHz/64 = 250kHz
+	spiConfig.SPI_bitOrder = SPI_MSB_TRANSMIT_FIRST;
+	spiConfig.SPI_dataBitMode = SPI_8BIT_DATA_FRAME;
+	spiConfig.SPI_clkRelationship = SPI_CLOCK_POL_PHA_1;
+
+	SPI_InitMaster(SPI2, spiConfig);
+}
+
+void setUpButtons(void)
+{
+	GPIO_PinConfig_t btnConfig;
+	btnConfig.GPIO_PinMode = GPIO_MODE_IT_RT;
+	btnConfig.GPIO_PinPuPdControl = GPIO_PIN_PD;
+	btnConfig.GPIO_PinNumber = RED_BTN;
+	GPIO_Init(GPIOC, btnConfig);	//Red Push Button
+
+	btnConfig.GPIO_PinNumber = YELLOW_BTN;
+	GPIO_Init(GPIOC, btnConfig);	// Yellow Push Button
+
+	btnConfig.GPIO_PinNumber = GREEN_BTN;
+	GPIO_Init(GPIOC, btnConfig);	// Green Push Button
+
+	btnConfig.GPIO_PinNumber = BLUE_BTN;
+	GPIO_Init(GPIOC, btnConfig);	// Blue Push Button
+
+	GPIOC->PUPDR |= (0x2A8 << 0);
+}
+
+void strToUint8P(uint8_t* pUint8, char* pChr)
+{
+	uint8_t inc = 0;
+	for(char* p = pChr; *p != '\0'; p++)
+	{
+		*pUint8 = (uint8_t)*p;
+		pUint8++;
+		inc++;
+	}
+	*pUint8 = '\0';
+	pUint8 -= inc;
+}
+/**************************************************************************************************************/
+
+/************ IRQ Handling and Application Event Callbacks ****************************************************/
+
+void EXTI1_IRQHandler(void)
+{
+	EXTI1_IRQHandling();
+}
+
+void EXTI2_IRQHandler(void)
+{
+	EXTI2_IRQHandling();
+}
+
+void EXTI3_IRQHandler(void)
+{
+	EXTI3_IRQHandling();
+}
+
+void EXTI4_IRQHandler(void)
+{
+	EXTI4_IRQHandling();
+}
+
+extern void GPIO_ApplicationEventCallBack(uint8_t pinNumber)
+{
+	if(pinNumber == RED_BTN)
+		btnPressed = RED_BTN_PRESSED;
+	else if(pinNumber == YELLOW_BTN)
+		btnPressed = YELLOW_BTN_PRESSED;
+	else if(pinNumber == GREEN_BTN)
+		btnPressed = GREEN_BTN_PRESSED;
+	else if(pinNumber == BLUE_BTN)
+		btnPressed = BLUE_BTN_PRESSED;
+}
+/**************************************************************************************************************/
+
+#endif /* _SPI_DATA_TX_RX */
