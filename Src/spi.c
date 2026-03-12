@@ -5,7 +5,7 @@
 /***************** Private Helper Function Headers *************************************/
 
 static void configClkDataTransfer(SPI_TypeDef *SPIx, uint8_t clkPolPha);
-//static void configDuplexRxTx(SPI_TypeDef *SPIx, uint8_t dirConfig);
+static void configDuplexRxTx(SPI_TypeDef *SPIx, uint8_t dirConfig);
 static void configSlaveMgnt(SPI_TypeDef *SPIx, uint8_t slaveMgmt);
 
 /***************************************************************************************/
@@ -94,112 +94,125 @@ void SPI_InitMaster(SPI_TypeDef *SPIx, SPI_Config_t SPI_config)
 	configSlaveMgnt(SPIx, config.SPI_SlaveMgmt);
 	//Set the FRF bit in SPI_CR2 to select the TI or Motorola protocol for serial communications.
 	SPIx->CR2 |= (config.SPI_frameFormat << SPI_CR2_FRF_Pos);
+	//Configure the directional data mode.
+	configDuplexRxTx(SPIx, config.SPI_bidirectionalMode);
 	//The MSTR and SPE bits must be set (they remain set only if the NSS pin is connected to a high-level signal).
 	SPIx->CR1 |= SPI_CR1_MSTR;
-	//SPIx->CR1 |= SPI_CR1_SPE;
 }
 
 /*
- * @fn			- SPI_TransmitDataMaster
+ * @fn			- SPI_MasterTransmissionStartTx
  *
  * @brief		- This function begins the data transmission process for
- * 				  master mode SPI communication.
+ * 				  master mode SPI communication. Only transmits data to
+ * 				  the slave device.
  *
  * @param[SPI_TypeDef]	- SPI base address.
+ * @param[uint8_t*]		- Data to transmit.
  *
  * @return		- None.
  *
- * @note		- None.
+ * @note		- Bidirectional Transmit-Only Mode.
  */
-void SPI_TransmitDataMaster(SPI_TypeDef *SPIx, uint8_t *dataTX, uint8_t *dataRx)
+void SPI_MasterTransmissionStartTx(SPI_TypeDef *SPIx, uint8_t *dataTx)
 {
 	if(config.SPI_interrupts == SPI_INTERRUPT_ENABLED)	//Data Transmission with Interrupts Enabled.
 	{
-
+		return;
 	}
-	else	//Data Transmission without Interrupts Enabled.
-	{
-		if(config.SPI_bidirectionalMode == SPI_2LINE_UNIDIRECTIONAL_RX_TX_MODE)
-		{//Full-Duplex Mode.
-			//Enable the SPI by setting the SPE bit to 1.
-			SPIx->CR1 |= SPI_CR1_SPE;
-			//Write the first data item to be transmitted into the SPI_DR register (this clears the TXE flag).
-			uint8_t* p = dataTX;
-			SPIx->DR = *p;
-			p++;
-			//Wait until TXE=1 and write the second data item to be transmitted.
-			while(!((SPIx->SR >> SPI_SR_TXE_Pos) & 0x1U)){}
 
-			do{
-				SPIx->DR = *p;
-				//Wait until RXNE=1 and read the SPI_DR.
-				while(!((SPIx->SR >> SPI_SR_RXNE_Pos) & 0x1U)){}
-				*dataRx = SPIx->DR;
-				if(*(p + 1) != '\0')
-					p++;
-				dataRx++;
-			}while(*(dataRx + 1) != '\0');//Repeat for each Tx/Rx until n-1 received data.
-
-			//Wait until RXNE=1 and read the last received data.
-			while(!((SPIx->SR >> SPI_SR_RXNE_Pos) & 0x1U)){}
-			*dataRx = SPIx->DR;
-			//Wait until TXE=1 and then wait until BSY=0 before disabling the SPI.
-			while(!((SPIx->SR >> SPI_SR_TXE_Pos) & 0x1U)){}
-			while(((SPIx->SR >> SPI_SR_BSY_Pos) & 0x1U)){}
-			SPIx->CR1 &= ~SPI_CR1_SPE;
-			dataRx -= 7U;
-		}
-		else if(config.SPI_bidirectionalMode == SPI_2LINE_UNIDIRECTIONAL_RX_ONLY_MODE)
-		{	//Unidirectional Receive-Only Mode.
-
-		}
-		else if(config.SPI_bidirectionalMode == SPI_1LINE_BIDRECTIONAL_RX_ONLY_MODE)
-		{	//Bidirectional Receive-Only Mode.
-
-		}
-		else if(config.SPI_bidirectionalMode == SPI_1LINE_BIDRECTIONAL_TX_ONLY_MODE)
-		{	//Bidirectional Transmit-Only Mode.
-			uint8_t* p = dataTX;
-			//Enable the SPI by setting the SPE bit to 1.
-			SPIx->CR1 |= SPI_CR1_SPE;
-			//Write the first data item to send into the SPI_DR register (this clears the TXE bit).
-			do{ //Wait until TXE=1 and write the next data item to be transmitted.
-				while(!((SPIx->SR >> SPI_SR_TXE_Pos) & 0x1U)){}
-				SPIx->DR = *p;
-				p++;  //Repeat this step for each data item to be transmitted.
-			}while(*p != '\0');
-			//After writing the last data item into the SPI_DR register, wait until TXE=1,
-			//then wait until BSY=0, this indicates that the transmission of the last data is complete.
-			while(!((SPIx->SR >> SPI_SR_TXE_Pos) & 0x1U)){}
-			while(((SPIx->SR >> SPI_SR_BSY_Pos) & 0x1U)){}
-			SPIx->CR1 &= ~SPI_CR1_SPE;
-		}
-	}
+	//Data Transmission without Interrupts Enabled.
+	uint8_t* p = dataTx;
+	//Enable the SPI by setting the SPE bit to 1.
+	SPIx->CR1 |= SPI_CR1_SPE;
+	//Write the first data item to send into the SPI_DR register (this clears the TXE bit).
+	do{ //Wait until TXE=1 and write the next data item to be transmitted.
+		while(!((SPIx->SR >> SPI_SR_TXE_Pos) & 0x1U)){}
+		SPIx->DR = *p;
+		p++;  //Repeat this step for each data item to be transmitted.
+	}while(*p != '\0');
+	//After writing the last data item into the SPI_DR register, wait until TXE=1,
+	//then wait until BSY=0, this indicates that the transmission of the last data is complete.
+	while(!((SPIx->SR >> SPI_SR_TXE_Pos) & 0x1U)){}
+	while(((SPIx->SR >> SPI_SR_BSY_Pos) & 0x1U)){}
+	SPIx->CR1 &= ~SPI_CR1_SPE;
 }
 
-
-
 /*
- * @fn			- SPI_DisableMaster
+ * @fn			- SPI_MasterTransmissionStartRx
  *
- * @brief		-
+ * @brief		- This function begins the data transmission process for
+ * 				  master mode SPI communication. Only receives data from
+ * 				  the slave device.
  *
  * @param[SPI_TypeDef]	- SPI base address.
+ * @param[uint8_t*]		- Data to be received.
  *
  * @return		- None.
  *
- * @note		- None.
+ * @note		- Bidirectional Receive-Only Mode.
  */
-void SPI_DisableMaster(SPI_TypeDef *SPIx, SPI_Config_t SPI_config)
+void SPI_MasterTransmissionStartRx(SPI_TypeDef *SPIx, uint8_t *dataRx)
 {
-	//Wait until RXNE=1 to receive the last data
 
-	//Wait until TXE=1
+}
 
-	//Then wait until BSY=0
+/*
+ * @fn			- SPI_MasterTransmissionStartTxRx
+ *
+ * @brief		- This function begins the data transmission process for
+ * 				  master mode SPI communication. Transmits and receives
+ * 				  data to and from the slave device.
+ *
+ * @param[SPI_TypeDef]	- SPI base address.
+ * @param[uint8_t*]		- Data to transmit.
+ * @param[uint8_t*]		- Data to be received.
+ *
+ * @return		- None.
+ *
+ * @note		- Unidirectional Transmit and Receive Mode (Full Duplex).
+ */
+void SPI_MasterTransmissionStartTxRx(SPI_TypeDef *SPIx, uint8_t *dataTx, uint8_t *dataRx)
+{
+	//Define local variables.
+	uint8_t* p = dataTx;
+	uint8_t dataRxInc = 0;
+	//Enable the SPI by setting the SPE bit to 1.
+	SPIx->CR1 |= SPI_CR1_SPE;
+	//Write the first data item to be transmitted into the SPI_DR register (this clears the TXE flag).
+	SPIx->DR = *p;
+	p++;
+	/*
+	 Wait until TXE=1 and write the second data item to be transmitted. Then wait until
+	 RXNE=1 and read the SPI_DR to get the first received data item (this clears the RXNE
+	 bit). Repeat this operation for each data item to be transmitted/received until the n–1
+	 received data.
+	 */
+	do{
+	while(SPI_TX_EMPTY){}
 
-	//Disable the SPI (SPE=0) and, eventually, enter the Halt mode (or disable the peripheralclock)
+	if(*p == '\0')	//If there's no more data to send, but still receiving data, write a dummy 0 to send.
+		SPIx->DR = 0;
+	else
+	{
+		SPIx->DR = *p;
+		p++;
+	}
+	while(SPI_RX_NOT_EMPTY){}
 
+	if(dataRxInc == 0)//The first received data will be '\0', so it will be written to a dummy variable.
+		SPIx->DR;
+
+	*dataRx = SPIx->DR;
+	dataRx++;
+	dataRxInc++;
+	}while(dataRxInc <= 12);
+	//Wait until RXNE=1 and read the last received data.
+	while(SPI_RX_NOT_EMPTY){}
+	//Wait until TXE=1 and then wait until BSY=0 before disabling the SPI.
+	while(SPI_TX_EMPTY){}
+	SPIx->CR1 &= ~SPI_CR1_SPE;
+	dataRx -= dataRxInc;
 }
 
 /*
@@ -219,17 +232,59 @@ void SPI_InitSlave(SPI_TypeDef *SPIx, SPI_Config_t SPI_config)
 }
 
 /*
- * @fn			- SPI_TransmitDataSlave
+ * @fn			- SPI_SlaveTransmissionStartTx
  *
- * @brief		-
+ * @brief		- This function begins the data transmission process for
+ * 				  master mode SPI communication. Only transmits data to
+ * 				  the slave device.
  *
  * @param[SPI_TypeDef]	- SPI base address.
+ * @param[uint8_t*]		- Data to transmit.
  *
  * @return		- None.
  *
- * @note		- None.
+ * @note		- Bidirectional Transmit-Only Mode.
  */
-void SPI_TransmitDataSlave(SPI_TypeDef *SPIx, uint8_t data)
+void SPI_SlaveTransmissionStartTx(SPI_TypeDef *SPIx, uint8_t *dataTx)
+{
+
+}
+
+/*
+ * @fn			- SPI_SlaveTransmissionStartRx
+ *
+ * @brief		- This function begins the data transmission process for
+ * 				  master mode SPI communication. Only receives data from
+ * 				  the slave device.
+ *
+ * @param[SPI_TypeDef]	- SPI base address.
+ * @param[uint8_t*]		- Data to be received.
+ *
+ * @return		- None.
+ *
+ * @note		- Bidirectional Receive-Only Mode.
+ */
+void SPI_SlaveTransmissionStartRx(SPI_TypeDef *SPIx, uint8_t *dataRx)
+{
+
+}
+
+/*
+ * @fn			- SPI_SlaveTransmissionStartTxRx
+ *
+ * @brief		- This function begins the data transmission process for
+ * 				  master mode SPI communication. Transmits and receives
+ * 				  data to and from the slave device.
+ *
+ * @param[SPI_TypeDef]	- SPI base address.
+ * @param[uint8_t*]		- Data to transmit.
+ * @param[uint8_t*]		- Data to be received.
+ *
+ * @return		- None.
+ *
+ * @note		- Unidirectional Transmit and Receive Mode (Full Duplex).
+ */
+void SPI_SlaveTransmissionStartTxRx(SPI_TypeDef *SPIx, uint8_t *dataTx, uint8_t *dataRx)
 {
 
 }
@@ -409,7 +464,7 @@ static void configClkDataTransfer(SPI_TypeDef *SPIx, uint8_t clkPolPha)
 		SPIx->CR1 &= ~SPI_CR1_CPHA;
 	}
 }
-/*
+
 static void configDuplexRxTx(SPI_TypeDef *SPIx, uint8_t dirConfig)
 {
 	if(dirConfig == SPI_2LINE_UNIDIRECTIONAL_RX_ONLY_MODE)
@@ -432,7 +487,7 @@ static void configDuplexRxTx(SPI_TypeDef *SPIx, uint8_t dirConfig)
 		SPIx->CR1 |= SPI_CR1_BIDIMODE;
 		SPIx->CR1 |= SPI_CR1_BIDIOE;
 	}
-}*/
+}
 
 static void configSlaveMgnt(SPI_TypeDef *SPIx, uint8_t slaveMgmt)
 {
