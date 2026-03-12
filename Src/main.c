@@ -894,7 +894,7 @@ extern void GPIO_ApplicationEventCallBack(uint8_t pinNumber)
 #define GREEN_BTN_PRESSED		20
 #define BLUE_BTN_PRESSED		25
 
-uint8_t* dataRx;
+uint8_t dataRx[13];
 uint8_t btnPressed;
 /**************************************************************************************************************/
 
@@ -983,13 +983,17 @@ void setUpSpi(void)
 	pins.GPIO_PinOPType = GPIO_OP_TYPE_PP;
 	GPIO_Init(GPIOB, pins); //MOSI
 
+	//Configure APB1 Prescaler
+	RCC->CFGR |= (1 << RCC_CFGR_PPRE1_Pos);
+
 	//Configure SPI Peripheral
 	spiConfig.SPI_bidirectionalMode = SPI_2LINE_UNIDIRECTIONAL_RX_TX_MODE;
-	spiConfig.SPI_baudRateDiv = SPI_BAUD_DIV_64; //Baud Rate = 16MHz/64 = 250kHz
+	spiConfig.SPI_baudRateDiv = SPI_BAUD_DIV_256; //Baud Rate = 8MHz/256 = 31,250 Hz
 	spiConfig.SPI_bitOrder = SPI_MSB_TRANSMIT_FIRST;
 	spiConfig.SPI_dataBitMode = SPI_8BIT_DATA_FRAME;
 	spiConfig.SPI_clkRelationship = SPI_CLOCK_POL_PHA_1;
 
+	//Initialize the SPI2 peripheral.
 	SPI_InitMaster(SPI2, spiConfig);
 }
 
