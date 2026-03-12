@@ -200,13 +200,11 @@ void SPI_MasterTransmissionStartTxRx(SPI_TypeDef *SPIx, uint8_t *dataTx, uint8_t
 	}
 	while(SPI_RX_NOT_EMPTY){}
 
-	if(dataRxInc == 0)//The first received data will be '\0', so it will be written to a dummy variable.
-		SPIx->DR;
-
 	*dataRx = SPIx->DR;
 	dataRx++;
 	dataRxInc++;
-	}while(dataRxInc <= 12);
+	for(uint8_t i = 0; i < 200; i++){}
+	}while(dataRxInc <= 11);
 	//Wait until RXNE=1 and read the last received data.
 	while(SPI_RX_NOT_EMPTY){}
 	//Wait until TXE=1 and then wait until BSY=0 before disabling the SPI.
