@@ -115,16 +115,25 @@ typedef struct
 #define MASTER_MODE		0
 #define SLAVE_MODE		1
 
+//SPI Flag Status
+#define SPI_TX_EMPTY			(!((SPIx->SR >> SPI_SR_TXE_Pos) & 0x1U))		//1: Tx buffer empty
+#define SPI_RX_NOT_EMPTY		(!((SPIx->SR >> SPI_SR_RXNE_Pos) & 0x1U))		//1: Rx buffer not empty
+#define SPI_BUSY_FLAG			(((SPIx->SR >> SPI_SR_BSY_Pos) & 0x1U))			//1: SPI (or I2S) is busy in communication or Tx buffer is not empty
+
 /*******************************************************************************************************************
 * 										APIs supported by this driver											   *
 *******************************************************************************************************************/
 
 void SPI_InitMaster(SPI_TypeDef *SPIx, SPI_Config_t SPI_config);
-void SPI_TransmitDataMaster(SPI_TypeDef *SPIx, uint8_t *dataTX, uint8_t *dataRx);
+void SPI_MasterTransmissionStartTx(SPI_TypeDef *SPIx, uint8_t *dataTX);
+void SPI_MasterTransmissionStartRx(SPI_TypeDef *SPIx, uint8_t *dataRx);
+void SPI_MasterTransmissionStartTxRx(SPI_TypeDef *SPIx, uint8_t *dataTX, uint8_t *dataRx);
 void SPI_DisableMaster(SPI_TypeDef *SPIx, SPI_Config_t SPI_config);
 
 void SPI_InitSlave(SPI_TypeDef *SPIx, SPI_Config_t SPI_config);
-void SPI_TransmitDataSlave(SPI_TypeDef *SPIx, uint8_t data);
+void SPI_SlaveTransmissionStartTx(SPI_TypeDef *SPIx, uint8_t *dataTX);
+void SPI_SlaveTransmissionStartRx(SPI_TypeDef *SPIx, uint8_t *dataRx);
+void SPI_SlaveTransmissionStartTxRx(SPI_TypeDef *SPIx, uint8_t *dataTX, uint8_t *dataRx);
 void SPI_DisableSlave(SPI_TypeDef *SPIx, SPI_Config_t SPI_config);
 
 void SPI_SetConfigurations(SPI_Config_t SPI_config);
