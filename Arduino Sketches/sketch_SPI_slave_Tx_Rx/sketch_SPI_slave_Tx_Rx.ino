@@ -76,8 +76,7 @@ void setup()
   // Initialize SPI Slave.
   SPI_SlaveInit();
   Serial.println("Slave Initialized");
-  SPDR = (byte)dataTx[dataInc];
-  dataInc++;
+  SPDR = (byte)dataTx[dataInc++];
 }
 
 // The loop function runs continuously after setup().
@@ -85,11 +84,16 @@ void loop()
 {
   if(dataReceived)
   {
-    SPDR = (byte)dataTx[dataInc];
-    dataInc++;
-    if(dataInc >= 12)
+    SPDR = (byte)dataTx[dataInc++];
+    dataReceived = false;
+
+    if(dataInc > 13)
+    {
       dataInc = 0;
+      SPDR = (byte)dataTx[dataInc++];
+    }
   }
+
 }
 
 
