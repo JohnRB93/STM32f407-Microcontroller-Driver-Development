@@ -180,8 +180,9 @@ void SPI_MasterTransmissionStartTxRx(SPI_TypeDef *SPIx, uint8_t *dataTx, uint8_t
 	//Enable the SPI by setting the SPE bit to 1.
 	SPIx->CR1 |= SPI_CR1_SPE;
 	//Write the first data item to be transmitted into the SPI_DR register (this clears the TXE flag).
-	SPIx->DR = *p;
-	p++;
+	//SPIx->DR = *p;
+	//p++;
+	SPIx->DR = 0x0;
 	/*
 	 Wait until TXE=1 and write the second data item to be transmitted. Then wait until
 	 RXNE=1 and read the SPI_DR to get the first received data item (this clears the RXNE
@@ -190,25 +191,26 @@ void SPI_MasterTransmissionStartTxRx(SPI_TypeDef *SPIx, uint8_t *dataTx, uint8_t
 	 */
 	do{
 	while(SPI_TX_EMPTY){}
-
 	if(*p == '\0')	//If there's no more data to send, but still receiving data, write a dummy 0 to send.
-		SPIx->DR = 0;
+		SPIx->DR = 0x0;
 	else
 	{
 		SPIx->DR = *p;
 		p++;
 	}
-	while(SPI_RX_NOT_EMPTY){}
 
+	while(SPI_RX_NOT_EMPTY){}
 	*dataRx = SPIx->DR;
 	dataRx++;
 	dataRxInc++;
-	for(uint8_t i = 0; i < 200; i++){}
 	}while(dataRxInc <= 11);
+
 	//Wait until RXNE=1 and read the last received data.
 	while(SPI_RX_NOT_EMPTY){}
+	*dataRx = SPIx->DR;
 	//Wait until TXE=1 and then wait until BSY=0 before disabling the SPI.
 	while(SPI_TX_EMPTY){}
+	while(SPI_BUSY_FLAG){}
 	SPIx->CR1 &= ~SPI_CR1_SPE;
 	dataRx -= dataRxInc;
 }
