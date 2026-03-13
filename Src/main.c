@@ -984,7 +984,7 @@ void setUpSpi(void)
 	GPIO_Init(GPIOB, pins); //MOSI
 
 	//Configure APB1 Prescaler
-	RCC->CFGR |= (1 << RCC_CFGR_PPRE1_Pos);
+	RCC->CFGR |= (0b100 << RCC_CFGR_PPRE1_Pos);
 
 	//Configure SPI Peripheral
 	spiConfig.SPI_bidirectionalMode = SPI_2LINE_UNIDIRECTIONAL_RX_TX_MODE;
